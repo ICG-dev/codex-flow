@@ -1,0 +1,19 @@
+{
+  "providers": {
+    "codex": {
+      "type": "cli",
+      "popup": ["codex", "-m", "{model}", "-c", "model_reasoning_effort=\"{effort}\"", "-s", "read-only", "-a", "on-request", "-c", "notify=[\"{close_popup}\"]", "{prompt}"]
+    },
+    "claude": {
+      "type": "cli",
+      "popup": ["claude", "--model", "{model}", "--effort", "{effort}", "{prompt}"]
+    },
+    "agy": {
+      "type": "cli",
+      "popup": ["agy", "--model", "{model}", "--effort", "{effort}", "-i", "{prompt}"]
+    }
+  },
+  "roles": {
+    "implementer": {"provider": "codex", "model": "gpt-6-astra", "effort": "medium", "popup": true}
+  }
+}
