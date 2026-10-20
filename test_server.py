@@ -53,6 +53,15 @@ class ServerTests(unittest.TestCase):
                 self.assertIn('task', result['content'][0]['text'])
             run.assert_not_called()
 
+    def test_run_role_is_rejected_inside_a_role(self):
+        with patch.dict(os.environ, {'TMUX': 'test', 'CODEX_FLOW_ROLE': 'claude'}), \
+                patch('server.subprocess.run') as run:
+            result = server.run_role({'role': 'implementer', 'task': 'work'})
+        self.assertTrue(result['isError'])
+        self.assertIn('run_role no se puede llamar desde un rol (CODEX_FLOW_ROLE=claude).',
+                      result['content'][0]['text'])
+        run.assert_not_called()
+
     def test_dispatch_exception_returns_internal_error(self):
         requests = [{'jsonrpc': '2.0', 'id': 7, 'method': 'ping'},
                     {'jsonrpc': '2.0', 'method': 'ping'}]
@@ -154,7 +163,8 @@ class ConfigurableRoleTests(unittest.TestCase):
         provider_call = [c for c in mock.call_args_list if c.args[0][0] == 'fake'][0]
         self.assertEqual(provider_call.args[0], ['fake', 'translate'])
         self.assertEqual(provider_call.kwargs, dict(cwd=str(Path.cwd().resolve()), capture_output=True,
-            encoding='utf-8', errors='replace', timeout=1800, stdin=subprocess.DEVNULL))
+            encoding='utf-8', errors='replace', timeout=1800, stdin=subprocess.DEVNULL,
+            env={'CODEX_FLOW_ROLE': 'traductor'}))
         self.assertFalse(any(c.args[0][1] in ('add', 'commit') for c in mock.call_args_list))
 
     def test_background_errors_include_diff(self):
@@ -240,6 +250,7 @@ class GitTests(unittest.TestCase):
             if argv[0] == 'tmux':
                 self.assertEqual(argv[:8], ['tmux', 'display-popup', '-E', '-w', '95%', '-h', '90%', '-d'])
                 self.assertEqual(Path(argv[8]).resolve(), self.directory.resolve())
+                self.assertEqual(argv[9:11], ['-e', 'CODEX_FLOW_ROLE=implementer'])
                 if change:
                     self.file.write_text('popup change\n')
                 return subprocess.CompletedProcess(argv, code, '', '')

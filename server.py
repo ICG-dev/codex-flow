@@ -120,6 +120,9 @@ def run_role(arguments):
         for name in ('role', 'task'):
             if not isinstance(arguments.get(name), str) or not arguments[name].strip():
                 raise ValueError(name + ' es un string requerido.')
+        if 'CODEX_FLOW_ROLE' in os.environ:
+            raise ValueError('run_role no se puede llamar desde un rol (CODEX_FLOW_ROLE={}).'.format(
+                os.environ['CODEX_FLOW_ROLE']))
         if arguments['task'].lstrip().startswith('-'):
             raise ValueError('task no puede empezar con "-": el CLI lo leería como opción.')
         cwd = arguments.get('cwd', os.getcwd())
@@ -158,7 +161,8 @@ def run_role(arguments):
         try:
             if popup:
                 result = subprocess.run(['tmux', 'display-popup', '-E', '-w', '95%', '-h', '90%',
-                                         '-d', cwd, shlex.join(argv)], capture_output=True, text=True)
+                                         '-d', cwd, '-e', 'CODEX_FLOW_ROLE=' + arguments['role'],
+                                         shlex.join(argv)], capture_output=True, text=True)
                 # 129 is the SIGHUP sent by close-popup.sh; other popup codes remain informational.
                 text = ('Popup cerrado al terminar el turno.' if result.returncode == 129 else
                         'Código de salida del popup: {}'.format(result.returncode))
@@ -166,7 +170,8 @@ def run_role(arguments):
                     text += '\n' + result.stderr.strip()
             else:
                 result = subprocess.run(argv, cwd=cwd, capture_output=True,
-                                        encoding='utf-8', errors='replace', timeout=timeout, stdin=subprocess.DEVNULL)
+                                        encoding='utf-8', errors='replace', timeout=timeout, stdin=subprocess.DEVNULL,
+                                        env={**os.environ, 'CODEX_FLOW_ROLE': arguments['role']})
                 error = result.returncode != 0
                 if error:
                     text = 'Código de salida del rol {}: {}\n{}'.format(

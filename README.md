@@ -78,6 +78,8 @@ Sustituye `TU_MODELO_AGY` por un modelo disponible en tu CLI. En `claude -p` y `
 
 Las reglas de permisos de los roles incluidos son exactas (sin `:*`) porque `git diff --output=<archivo>` escribe archivos. Cada comando se incluye también con la variante `rtk` porque algunos hooks reescriben los comandos antes de comprobar permisos; si usas otro reescritor, añade su variante.
 
+Los roles de Claude añaden `--tools`, que limita las herramientas disponibles (quita los subagentes, incluso si la configuración global los permite): `Read,Grep,Glob,Bash` en `planner` y `reviewer`, y `Read,Grep,Glob,Edit,Write,Bash` en `fixer`. En `fixer`, `Edit(./**)` y `Write(./**)` limitan la escritura al repositorio (rutas relativas al `cwd` del rol). No se usa `--permission-mode acceptEdits` porque permite `rm` y `touch` y escribir fuera del repositorio.
+
 Los proveedores definen `type: "cli"` y hasta dos listas de argumentos: `popup` (interactiva) y `background` (salida por stdout). Debe existir la plantilla del modo elegido. El elemento exacto `"{args}"` se expande en los argumentos del rol, en su lugar; sin argumentos desaparece. Los marcadores `{prompt}`, `{model}`, `{effort}` y `{close_popup}` se sustituyen dentro de la plantilla y de los argumentos en una sola pasada: los marcadores que aparezcan en los valores insertados quedan literales. Un marcador requerido sin valor produce un error. `{close_popup}` apunta al script junto al servidor. Con opciones que aceptan varios valores (p. ej. `--allowed-tools` de `claude`), poner `"--"` antes de `"{prompt}"` en la plantilla; si no, la opción se traga el prompt.
 
 En popup se escapan los argumentos al construir el comando de tmux; en segundo plano se pasa la lista directamente al proceso. `task` no puede empezar con `-`. No se incluyen proveedores API.
@@ -87,6 +89,8 @@ En popup se escapan los argumentos al construir el comando de tmux; en segundo p
 El servidor funciona sin red y sin puertos: solo lee y escribe mensajes JSON por stdio. Los CLI invocados pueden usar red según su funcionamiento. Para claves de API, usa solo variables de entorno; no las guardes en la configuración ni en el repositorio. La configuración contiene comandos ejecutables y debe proceder de una fuente de confianza.
 
 Codex se inicia con sandbox `read-only` y aprobaciones `on-request`: puede solicitar autorización para escribir. Cuando está activada, la foto Git modifica el índice y puede crear un commit antes de ejecutar el rol. Usa `cwd` para señalar el repositorio que quieres modificar.
+
+Guardia anti-cadena: cada rol lanzado recibe `CODEX_FLOW_ROLE=<rol>` (en popup mediante `tmux display-popup -e`, requiere tmux 3.3 o superior) y `run_role` se niega a ejecutarse si esa variable existe, para que un rol no pueda lanzar otros roles.
 
 ## Pruebas
 
