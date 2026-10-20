@@ -176,6 +176,12 @@ def run_role(arguments):
                 if error:
                     text = 'Código de salida del rol {}: {}\n{}'.format(
                         arguments['role'], result.returncode, result.stderr[-4000:])
+                elif not result.stdout.strip():
+                    # Some CLIs (agy -p) exit 0 with empty stdout when a tool is auto-denied.
+                    error = True
+                    text = 'El rol {} no produjo salida.'.format(arguments['role'])
+                    if result.stderr.strip():
+                        text += '\n' + result.stderr[-4000:]
                 else:
                     text = result.stdout
                     if len(text) > 20000:

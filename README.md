@@ -76,6 +76,12 @@ Otro ejemplo para cambiar el revisor a `agy`:
 
 Sustituye `TU_MODELO_AGY` por un modelo disponible en tu CLI. En `claude -p` y `agy -p` los permisos se dan mediante `args` (por ejemplo, `--allowed-tools` en Claude y `--mode` en agy); usa los valores admitidos por tu instalación.
 
+Nota sobre `agy` en segundo plano: no uses `--mode plan`, porque guarda el plan en un archivo interno de agy y no lo devuelve por stdout. `agy -p` sin ventana bloquea por sí solo las herramientas que piden permiso (escritura, comandos), así que sirve como rol de solo lectura sin args extra. Si el rol termina con código 0 pero sin salida (p. ej. una herramienta bloqueada), el servidor devuelve `isError: true` con el stderr. Ejemplo de `planner` con agy:
+
+```json
+{"provider": "agy", "model": "gemini-3.8-flash-high", "effort": "high", "popup": false, "snapshot": false}
+```
+
 Las reglas de permisos de los roles incluidos son exactas (sin `:*`) porque `git diff --output=<archivo>` escribe archivos. Cada comando se incluye también con la variante `rtk` porque algunos hooks reescriben los comandos antes de comprobar permisos; si usas otro reescritor, añade su variante.
 
 Los roles de Claude añaden `--tools`, que limita las herramientas disponibles (quita los subagentes, incluso si la configuración global los permite): `Read,Grep,Glob,Bash` en `planner` y `reviewer`, y `Read,Grep,Glob,Edit,Write,Bash` en `fixer`. En `fixer`, `Edit(./**)` y `Write(./**)` limitan la escritura al repositorio (rutas relativas al `cwd` del rol). No se usa `--permission-mode acceptEdits` porque permite `rm` y `touch` y escribir fuera del repositorio.

@@ -183,6 +183,15 @@ class ConfigurableRoleTests(unittest.TestCase):
                 if isinstance(outcome, subprocess.CompletedProcess):
                     self.assertIn('e' * 4000, text)
 
+    def test_empty_stdout_is_error(self):
+        result, _ = self.invoke(subprocess.CompletedProcess(['fake'], 0, ' \n', 'discard' + 'e' * 4000))
+        text = result['content'][0]['text']
+        self.assertTrue(result['isError'])
+        self.assertIn('El rol traductor no produjo salida.', text)
+        self.assertIn('e' * 4000, text)
+        self.assertNotIn('discard', text)
+        self.assertIn('file | 1 +', text)
+
     def test_stdout_truncation(self):
         result, _ = self.invoke(subprocess.CompletedProcess(['fake'], 0, 'discard' + 'x' * 20000, ''))
         text = result['content'][0]['text']
