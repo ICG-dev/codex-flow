@@ -193,13 +193,16 @@ def run_role(arguments):
         except OSError as exc:
             text, error = str(exc), True
         stat = git(cwd, 'diff', '--stat', 'HEAD', check=False)
+        new = git(cwd, 'ls-files', '-z', '--others', '--exclude-standard', check=False)
+        untracked = [] if new.returncode else [path for path in new.stdout.split('\0') if path]
         if stat.returncode:
             # Preserve the CLI outcome, including when snapshot=false leaves an unborn HEAD.
             text += '\nNo se pudo obtener git diff --stat HEAD: ' + stat.stderr.strip()
         elif stat.stdout.strip():
             text += '\n' + stat.stdout.strip()
-        elif popup:
+        elif popup and not untracked:
             text += '\nSin cambios respecto a HEAD.'
+        text += ''.join('\n?? ' + path for path in untracked)
         return tool_result(text, error)
     except (OSError, ValueError, TypeError) as exc:
         return tool_result(str(exc), True)

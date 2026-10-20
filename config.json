@@ -78,10 +78,11 @@
       "popup": false,
       "snapshot": false,
       "args": [
+        "--safe-mode",
         "--tools",
         "Read,Grep,Glob,Bash",
         "--allowed-tools",
-        "Read,Grep,Glob,Bash(git diff),Bash(rtk git diff),Bash(git diff HEAD),Bash(rtk git diff HEAD),Bash(git diff --stat),Bash(rtk git diff --stat),Bash(git diff --stat HEAD),Bash(rtk git diff --stat HEAD),Bash(git status),Bash(rtk git status),Bash(git log --oneline -20),Bash(rtk git log --oneline -20)",
+        "Read,Grep,Glob,Bash(git diff),Bash(git diff HEAD),Bash(git diff --stat),Bash(git diff --stat HEAD),Bash(git status),Bash(git log --oneline -20)",
         "--append-system-prompt",
         "Ya estás en la raíz del repositorio. Ejecuta git exactamente con los comandos permitidos, sin cd ni -C."
       ]
@@ -108,10 +109,11 @@
       "popup": false,
       "snapshot": false,
       "args": [
+        "--safe-mode",
         "--tools",
         "Read,Grep,Glob,Bash",
         "--allowed-tools",
-        "Read,Grep,Glob,Bash(git diff),Bash(rtk git diff),Bash(git diff HEAD),Bash(rtk git diff HEAD),Bash(git diff --stat),Bash(rtk git diff --stat),Bash(git diff --stat HEAD),Bash(rtk git diff --stat HEAD),Bash(git status),Bash(rtk git status),Bash(git log --oneline -20),Bash(rtk git log --oneline -20)",
+        "Read,Grep,Glob,Bash(git diff),Bash(git diff HEAD),Bash(git diff --stat),Bash(git diff --stat HEAD),Bash(git status),Bash(git log --oneline -20)",
         "--append-system-prompt",
         "Ya estás en la raíz del repositorio. Ejecuta git exactamente con los comandos permitidos, sin cd ni -C."
       ]
@@ -123,10 +125,11 @@
       "popup": false,
       "snapshot": true,
       "args": [
+        "--safe-mode",
         "--tools",
         "Read,Grep,Glob,Edit,Write,Bash",
         "--allowed-tools",
-        "Read,Grep,Glob,Edit(./**),Write(./**),Bash(git diff),Bash(rtk git diff),Bash(git diff HEAD),Bash(rtk git diff HEAD)",
+        "Read,Grep,Glob,Edit(./**),Write(./**),Bash(git diff),Bash(git diff HEAD)",
         "--append-system-prompt",
         "Ya estás en la raíz del repositorio. Ejecuta git exactamente con los comandos permitidos, sin cd ni -C."
       ]

@@ -129,7 +129,7 @@ class ConfigurableRoleTests(unittest.TestCase):
             outcome = subprocess.CompletedProcess(['fake'], 0, 'translated', '')
         def run(argv, **kwargs):
             if argv[0] == 'git':
-                output = 'true' if argv[1] == 'rev-parse' else ' file | 1 +'
+                output = {'rev-parse': 'true', 'ls-files': ''}.get(argv[1], ' file | 1 +')
                 return subprocess.CompletedProcess(argv, 0, output, '')
             if isinstance(outcome, Exception):
                 raise outcome
@@ -274,6 +274,18 @@ class GitTests(unittest.TestCase):
         self.assertEqual(self.git('log', '-1', '--format=%s'), 'wip')
         self.assertEqual(self.git('show', 'HEAD:tracked.txt'), 'before popup')
         self.assertIn('tracked.txt', result['content'][0]['text'])
+
+    def test_untracked_files_are_listed(self):
+        (self.directory / 'new.txt').write_text('new\n')
+        (self.directory / 'dir').mkdir()
+        (self.directory / 'dir' / 'a b.txt').write_text('x\n')
+        (self.directory / '.gitignore').write_text('ignored.txt\n')
+        (self.directory / 'ignored.txt').write_text('x\n')
+        text = self.invoke(False)['content'][0]['text']
+        self.assertIn('\n?? new.txt', text)
+        self.assertIn('\n?? dir/a b.txt', text)
+        self.assertNotIn('ignored.txt', text)
+        self.assertNotIn('Sin cambios respecto a HEAD.', text)
 
     def test_clean_repo_continues_without_commit(self):
         before = self.git('rev-parse', 'HEAD')

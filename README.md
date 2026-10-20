@@ -20,9 +20,9 @@ Si la ruta contiene espacios, enciérrala entre comillas. Para usar popups, inic
 
 `run_role` comprueba que `cwd` sea un repositorio Git. Con `snapshot: true` (valor predeterminado), ejecuta `git add -u` y crea un commit `wip` si hay cambios preparados. Incluye cambios que ya estaban staged; los archivos nuevos sin seguimiento no se añaden automáticamente. Si no hay cambios continúa; en un repositorio sin commits crea un commit vacío para disponer de HEAD. Los errores de comprobación o de la foto Git impiden ejecutar el rol. Con `snapshot: false` no prepara ni confirma cambios.
 
-El popup ocupa el 95% del ancho y el 90% del alto y bloquea la llamada hasta cerrarse. La respuesta incluye el código de salida y `git diff --stat HEAD`, sin el diff completo. Esa estadística no incluye archivos sin seguimiento ni cambios ya confirmados por el CLI. Codex utiliza el script `close-popup.sh` para cerrar el popup al terminar el turno principal; con otros CLI sal del programa para cerrar el popup.
+El popup ocupa el 95% del ancho y el 90% del alto y bloquea la llamada hasta cerrarse. La respuesta incluye el código de salida y `git diff --stat HEAD`, sin el diff completo. Esa estadística no incluye cambios ya confirmados por el CLI; los archivos nuevos sin seguimiento (que respetan `.gitignore`) aparecen después como líneas `?? ruta`. Codex utiliza el script `close-popup.sh` para cerrar el popup al terminar el turno principal; con otros CLI sal del programa para cerrar el popup.
 
-En segundo plano se ejecuta el CLI sin entrada interactiva y se devuelve stdout. Si supera 20000 caracteres, se conservan los últimos 20000 con un aviso. Un código distinto de cero devuelve `isError: true`, el código y los últimos 4000 caracteres de stderr; un programa inexistente o un timeout también devuelve error. Al final se añade `git diff --stat HEAD` si tiene contenido. Si no se puede obtener la estadística (por ejemplo, sin HEAD y con `snapshot: false`), se informa sin ocultar el resultado del CLI. El timeout solo se aplica al segundo plano.
+En segundo plano se ejecuta el CLI sin entrada interactiva y se devuelve stdout. Si supera 20000 caracteres, se conservan los últimos 20000 con un aviso. Un código distinto de cero devuelve `isError: true`, el código y los últimos 4000 caracteres de stderr; un programa inexistente o un timeout también devuelve error. Al final se añade `git diff --stat HEAD` si tiene contenido, seguido de los archivos nuevos como `?? ruta`. Si no se puede obtener la estadística (por ejemplo, sin HEAD y con `snapshot: false`), se informa sin ocultar el resultado del CLI. El timeout solo se aplica al segundo plano.
 
 ## Configuración
 
@@ -82,13 +82,42 @@ Nota sobre `agy` en segundo plano: no uses `--mode plan`, porque guarda el plan 
 {"provider": "agy", "model": "gemini-3.8-flash-high", "effort": "high", "popup": false, "snapshot": false}
 ```
 
-Las reglas de permisos de los roles incluidos son exactas (sin `:*`) porque `git diff --output=<archivo>` escribe archivos. Cada comando se incluye también con la variante `rtk` porque algunos hooks reescriben los comandos antes de comprobar permisos; si usas otro reescritor, añade su variante.
+Las reglas de permisos de los roles incluidos son exactas (sin `:*`) porque `git diff --output=<archivo>` escribe archivos. Los roles de Claude usan `--safe-mode`: no leen el CLAUDE.md del usuario ni del proyecto, y no cargan hooks, MCP, agentes ni skills (así no pueden llamar a `run_role`), pero conservan la autenticación y los permisos. Por eso ya no hacen falta variantes `rtk` de las reglas. Si quieres que el rol lea el CLAUDE.md del proyecto, quita `--safe-mode` de sus `args`; entonces los hooks que reescriben comandos (p. ej. RTK) obligan a añadir la variante reescrita de cada regla.
 
 Los roles de Claude añaden `--tools`, que limita las herramientas disponibles (quita los subagentes, incluso si la configuración global los permite): `Read,Grep,Glob,Bash` en `planner` y `reviewer`, y `Read,Grep,Glob,Edit,Write,Bash` en `fixer`. En `fixer`, `Edit(./**)` y `Write(./**)` limitan la escritura al repositorio (rutas relativas al `cwd` del rol). No se usa `--permission-mode acceptEdits` porque permite `rm` y `touch` y escribir fuera del repositorio.
 
 Los proveedores definen `type: "cli"` y hasta dos listas de argumentos: `popup` (interactiva) y `background` (salida por stdout). Debe existir la plantilla del modo elegido. El elemento exacto `"{args}"` se expande en los argumentos del rol, en su lugar; sin argumentos desaparece. Los marcadores `{prompt}`, `{model}`, `{effort}` y `{close_popup}` se sustituyen dentro de la plantilla y de los argumentos en una sola pasada: los marcadores que aparezcan en los valores insertados quedan literales. Un marcador requerido sin valor produce un error. `{close_popup}` apunta al script junto al servidor. Con opciones que aceptan varios valores (p. ej. `--allowed-tools` de `claude`), poner `"--"` antes de `"{prompt}"` en la plantilla; si no, la opción se traga el prompt.
 
 En popup se escapan los argumentos al construir el comando de tmux; en segundo plano se pasa la lista directamente al proceso. `task` no puede empezar con `-`. No se incluyen proveedores API.
+
+### Correr pruebas desde un rol
+
+Apagado por defecto: los roles incluidos no pueden ejecutar pruebas. Para activarlo, reemplaza el rol en `~/.config/codex-flow/config.json` (recuerda que reemplaza la entrada completa) y añade las reglas al `--allowed-tools`, por ejemplo `Bash(python3 -m unittest)` y `Bash(python3 -m unittest:*)`:
+
+```json
+{
+  "roles": {
+    "reviewer": {
+      "provider": "claude",
+      "model": "claude-opus-5-5",
+      "effort": "medium",
+      "popup": false,
+      "snapshot": false,
+      "args": [
+        "--safe-mode",
+        "--tools",
+        "Read,Grep,Glob,Bash",
+        "--allowed-tools",
+        "Read,Grep,Glob,Bash(git diff),Bash(git diff HEAD),Bash(git diff --stat),Bash(git diff --stat HEAD),Bash(git status),Bash(git log --oneline -20),Bash(python3 -m unittest),Bash(python3 -m unittest:*)",
+        "--append-system-prompt",
+        "Ya estás en la raíz del repositorio. Ejecuta git exactamente con los comandos permitidos, sin cd ni -C."
+      ]
+    }
+  }
+}
+```
+
+Advertencia: correr pruebas ejecuta código del repositorio. Un `fixer` que puede editar y correr pruebas puede ejecutar cualquier cosa y saltarse el límite de escritura al repositorio. Actívalo solo en proyectos de confianza y, si es posible, dáselo al `reviewer` (solo lectura) antes que al `fixer`.
 
 ## Seguridad
 
