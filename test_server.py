@@ -99,11 +99,122 @@ class ServerTests(unittest.TestCase):
                   'roles': {'reviewer': {'provider': 'codex', 'popup': False},
                             'bad': {'provider': 'missing', 'popup': True}}}
         with patch('server.load_config', return_value=config), patch('server.subprocess.run') as run:
-            for role, message in [('missing', 'Rol'), ('reviewer', 'no soportado'), ('bad', 'Proveedor')]:
+            for role, message in [('missing', 'Rol'), ('reviewer', "no tiene plantilla 'background'"), ('bad', 'Proveedor')]:
                 result = server.run_role({'role': role, 'task': 'work'})
                 self.assertTrue(result['isError'])
                 self.assertIn(message, result['content'][0]['text'])
             run.assert_not_called()
+
+
+class ConfigurableRoleTests(unittest.TestCase):
+    def setUp(self):
+        self.config = {'providers': {'fake': {'type': 'cli',
+            'background': ['fake', '{args}', '{prompt}'], 'popup': ['interactive', '{prompt}']}},
+            'roles': {'traductor': {'provider': 'fake', 'snapshot': False}}}
+        self.loader = patch('server.load_config', return_value=self.config)
+        self.loader.start()
+        self.addCleanup(self.loader.stop)
+
+    def invoke(self, outcome=None):
+        if outcome is None:
+            outcome = subprocess.CompletedProcess(['fake'], 0, 'translated', '')
+        def run(argv, **kwargs):
+            if argv[0] == 'git':
+                output = 'true' if argv[1] == 'rev-parse' else ' file | 1 +'
+                return subprocess.CompletedProcess(argv, 0, output, '')
+            if isinstance(outcome, Exception):
+                raise outcome
+            return outcome
+        with patch.dict(os.environ, {}, clear=True), patch('server.subprocess.run', side_effect=run) as mock:
+            result = server.run_role({'role': 'traductor', 'task': 'translate'})
+        return result, mock
+
+    def test_args_expansion_and_single_pass(self):
+        role = {'model': 'm{effort}', 'effort': 'high',
+                'args': ['--model', '{model}', '{close_popup}', '{prompt}']}
+        self.assertEqual(server.build_command(['fake', '{args}', 'end'], role, '{model}'),
+                         ['fake', '--model', 'm{effort}', str(server.CLOSE_POPUP), '{model}', 'end'])
+        self.assertEqual(server.build_command(['fake', '{args}', '{prompt}'], {}, 'hi'), ['fake', 'hi'])
+
+    def test_missing_placeholder_in_template_or_args(self):
+        for template, args, missing in [(['fake', '{model}'], [], 'model'),
+                                        (['fake', '{args}'], ['{effort}'], 'effort')]:
+            with self.subTest(missing=missing):
+                self.config['providers']['fake']['background'] = template
+                self.config['roles']['traductor']['args'] = args
+                result, mock = self.invoke()
+                self.assertTrue(result['isError'])
+                self.assertIn("Falta '{}' en el rol traductor.".format(missing), result['content'][0]['text'])
+                mock.assert_not_called()
+
+    def test_background_without_tmux_and_without_snapshot(self):
+        result, mock = self.invoke()
+        self.assertFalse(result['isError'], result)
+        self.assertEqual(result['content'][0]['text'], 'translated\nfile | 1 +')
+        provider_call = [c for c in mock.call_args_list if c.args[0][0] == 'fake'][0]
+        self.assertEqual(provider_call.args[0], ['fake', 'translate'])
+        self.assertEqual(provider_call.kwargs, dict(cwd=str(Path.cwd().resolve()), capture_output=True,
+            encoding='utf-8', errors='replace', timeout=1800, stdin=subprocess.DEVNULL))
+        self.assertFalse(any(c.args[0][1] in ('add', 'commit') for c in mock.call_args_list))
+
+    def test_background_errors_include_diff(self):
+        self.config['roles']['traductor']['timeout'] = 2.5
+        cases = [(subprocess.CompletedProcess(['fake'], 7, '', 'discard' + 'e' * 4000), '7'),
+                 (subprocess.TimeoutExpired(['fake'], 2.5), 'El rol traductor superó 2.5 s.'),
+                 (FileNotFoundError('fake'), 'fake')]
+        for outcome, message in cases:
+            with self.subTest(outcome=outcome):
+                result, _ = self.invoke(outcome)
+                self.assertTrue(result['isError'])
+                text = result['content'][0]['text']
+                self.assertIn(message, text)
+                self.assertIn('file | 1 +', text)
+                self.assertNotIn('discard', text)
+                if isinstance(outcome, subprocess.CompletedProcess):
+                    self.assertIn('e' * 4000, text)
+
+    def test_stdout_truncation(self):
+        result, _ = self.invoke(subprocess.CompletedProcess(['fake'], 0, 'discard' + 'x' * 20000, ''))
+        text = result['content'][0]['text']
+        self.assertFalse(result['isError'])
+        self.assertIn('recort', text[:100].lower())
+        self.assertIn('x' * 20000, text)
+        self.assertNotIn('discard', text)
+
+    def test_missing_mode_template(self):
+        for popup, mode in [(False, 'background'), (True, 'popup')]:
+            with self.subTest(mode=mode):
+                self.config['roles']['traductor']['popup'] = popup
+                self.config['providers']['fake'].pop(mode)
+                result, mock = self.invoke()
+                self.assertTrue(result['isError'])
+                self.assertIn("El proveedor fake no tiene plantilla '{}'.".format(mode), result['content'][0]['text'])
+                mock.assert_not_called()
+
+    def test_dynamic_tools_and_fallback(self):
+        def listing():
+            return server.dispatch({'id': 1, 'method': 'tools/list'})['result']['tools'][0]
+        self.config['roles']['traductor']['model'] = 'm'
+        tool = listing()
+        self.assertIn('traductor: fake/m (segundo plano)', tool['description'])
+        self.assertEqual(tool['inputSchema']['properties']['role'], {'type': 'string'})
+        self.config['roles']['traductor']['popup'] = True
+        self.assertIn('traductor: fake/m (popup)', listing()['description'])
+        with patch('server.load_config', side_effect=ValueError('invalid')):
+            self.assertEqual(listing()['description'], server.TOOLS[0]['description'])
+
+    def test_doctor_lists_roles_and_both_programs(self):
+        self.config['roles']['interactive'] = {'provider': 'fake', 'popup': True, 'model': 'm'}
+        self.config['roles']['missing'] = {'provider': 'absent'}
+        with patch('server.shutil.which', return_value='/bin/fake') as which:
+            text = server.doctor()['content'][0]['text']
+        self.assertIn('traductor: fake/', text)
+        self.assertIn('interactive: fake/m (popup)', text)
+        self.assertIn('falta: Rol missing', text)
+        which.assert_any_call('fake')
+        which.assert_any_call('interactive')
+        del self.config['providers']['fake']['background']
+        self.assertIn("no tiene plantilla 'background'", server.doctor()['content'][0]['text'])
 
 
 class GitTests(unittest.TestCase):

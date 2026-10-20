@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Minimal stdio MCP server for interactive CLI roles (Python 3.9+)."""
+"""Minimal stdio MCP server for configurable CLI roles (Python 3.9+)."""
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -42,16 +43,62 @@ def load_config(base_path=None, user_path=None):
             for key in ('providers', 'roles')}
 
 
-def build_command(template, role, task):
+def build_command(template, role, task, role_name='desconocido'):
     if not isinstance(template, list) or not template or any(not isinstance(s, str) for s in template):
-        raise ValueError('El proveedor necesita una plantilla popup con una lista de argumentos.')
-    values = {'prompt': task, 'model': role.get('model', ''),
-              'effort': role.get('effort', ''), 'close_popup': str(CLOSE_POPUP)}
-    if any(not isinstance(value, str) for value in values.values()):
-        raise ValueError('model y effort deben ser strings.')
-    # One pass: placeholders occurring in task text remain literal.
-    return [re.sub(r'\{(prompt|model|effort|close_popup)\}',
-                   lambda match: values[match.group(1)], item) for item in template]
+        raise ValueError('El proveedor necesita una plantilla con una lista de argumentos.')
+    args = role.get('args', [])
+    if not isinstance(args, list) or any(not isinstance(arg, str) for arg in args):
+        raise ValueError('args debe ser una lista de strings.')
+    values = {'prompt': task, 'close_popup': str(CLOSE_POPUP)}
+    def substitute(match):
+        key = match.group(1)
+        if key in values:
+            return values[key]
+        if key not in role:
+            raise ValueError("Falta '{}' en el rol {}.".format(key, role_name))
+        if not isinstance(role[key], str):
+            raise ValueError(key + ' debe ser un string.')
+        return role[key]
+    # One pass: placeholders in substituted values remain literal.
+    expanded = [arg for item in template for arg in (args if item == '{args}' else [item])]
+    argv = [re.sub(r'\{(prompt|model|effort|close_popup)\}', substitute, item) for item in expanded]
+    if not argv or not argv[0]:
+        raise ValueError('La plantilla debe indicar un programa.')
+    return argv
+
+
+def role_mode(role):
+    if not isinstance(role.get('popup', False), bool):
+        raise ValueError('popup debe ser un bool.')
+    return 'popup' if role.get('popup', False) else 'background'
+
+
+def role_template(config, role):
+    name = role.get('provider')
+    provider = config['providers'].get(name)
+    if provider is None:
+        raise ValueError('Proveedor inexistente: ' + str(name))
+    if provider.get('type') != 'cli':
+        raise ValueError('Proveedor no soportado todavía: necesita type=cli.')
+    mode = role_mode(role)
+    if mode not in provider:
+        raise ValueError("El proveedor {} no tiene plantilla '{}'.".format(name, mode))
+    return provider[mode]
+
+
+def role_description(name, role):
+    return '{}: {}/{} ({})'.format(name, role.get('provider', '?'), role.get('model', '?'),
+        'popup' if role_mode(role) == 'popup' else 'segundo plano')
+
+
+def list_tools():
+    try:
+        roles = load_config()['roles']
+        description = 'Ejecuta un rol configurable en popup o segundo plano.\n' + '\n'.join(
+            role_description(name, role) for name, role in roles.items())
+    except (OSError, ValueError, TypeError):
+        description = TOOLS[0]['description']
+    return [{**TOOLS[0], 'description': description}, TOOLS[1]]
 
 
 def tool_result(text, error=False):
@@ -75,7 +122,7 @@ def run_role(arguments):
                 raise ValueError(name + ' es un string requerido.')
         if arguments['task'].lstrip().startswith('-'):
             raise ValueError('task no puede empezar con "-": el CLI lo leería como opción.')
-        cwd =arguments.get('cwd', os.getcwd())
+        cwd = arguments.get('cwd', os.getcwd())
         if not isinstance(cwd, str) or not cwd:
             raise ValueError('cwd debe ser un string no vacío.')
         cwd = str(Path(cwd).resolve())
@@ -83,37 +130,66 @@ def run_role(arguments):
         role = config['roles'].get(arguments['role'])
         if role is None:
             raise ValueError('Rol inexistente: ' + arguments['role'])
-        provider = config['providers'].get(role.get('provider'))
-        if provider is None:
-            raise ValueError('Proveedor inexistente para el rol: ' + arguments['role'])
-        if role.get('popup') is not True:
-            raise ValueError('Rol no soportado todavía: necesita popup=true.')
-        if provider.get('type') != 'cli':
-            raise ValueError('Proveedor no soportado todavía: necesita type=cli.')
-        if 'TMUX' not in os.environ:
+        template = role_template(config, role)
+        popup = role_mode(role) == 'popup'
+        if popup and 'TMUX' not in os.environ:
             return tool_result('Abre Claude o agy dentro de tmux para usar el popup.', True)
-        command = shlex.join(build_command(provider.get('popup'), role, arguments['task']))
+        argv = build_command(template, role, arguments['task'], arguments['role'])
+        snapshot = role.get('snapshot', True)
+        if not isinstance(snapshot, bool):
+            raise ValueError('snapshot debe ser un bool.')
+        timeout = role.get('timeout', 1800)
+        if not popup and (isinstance(timeout, bool) or not isinstance(timeout, (int, float))
+                          or not math.isfinite(timeout) or timeout <= 0):
+            raise ValueError('timeout debe ser un número positivo finito de segundos.')
         if git(cwd, 'rev-parse', '--is-inside-work-tree').stdout.strip() != 'true':
             raise ValueError('cwd no es un repositorio Git de trabajo.')
-        git(cwd, 'add', '-u')
-        staged = git(cwd, 'diff', '--cached', '--quiet', check=False)
-        if staged.returncode not in (0, 1):
-            raise ValueError('No se pudieron comprobar los cambios preparados en Git.')
-        if staged.returncode == 1:
-            git(cwd, 'commit', '-m', 'wip')
-        # An empty repository needs a HEAD for the requested diff.
-        elif git(cwd, 'rev-parse', '--verify', 'HEAD', check=False).returncode:
-            git(cwd, 'commit', '--allow-empty', '-m', 'wip')
-        popup = subprocess.run(['tmux', 'display-popup', '-E', '-w', '95%', '-h', '90%',
-                                '-d', cwd, command], capture_output=True, text=True)
-        stat = git(cwd, 'diff', '--stat', 'HEAD').stdout.strip()
-        # 129 is the SIGHUP sent by `tmux display-popup -C` from close-popup.sh.
-        status = 'Popup cerrado al terminar el turno.' if popup.returncode == 129 else 'Código de salida del popup: {}'.format(popup.returncode)
-        text = '{}\n{}'.format(status, stat or 'Sin cambios respecto a HEAD.')
-        if popup.stderr.strip():
-            text += '\n' + popup.stderr.strip()
-        # Closing the popup with `tmux display-popup -C` can yield a non-zero code.
-        return tool_result(text)
+        if snapshot:
+            git(cwd, 'add', '-u')
+            staged = git(cwd, 'diff', '--cached', '--quiet', check=False)
+            if staged.returncode not in (0, 1):
+                raise ValueError('No se pudieron comprobar los cambios preparados en Git.')
+            if staged.returncode == 1:
+                git(cwd, 'commit', '-m', 'wip')
+            # An empty repository needs a HEAD for the requested diff.
+            elif git(cwd, 'rev-parse', '--verify', 'HEAD', check=False).returncode:
+                git(cwd, 'commit', '--allow-empty', '-m', 'wip')
+        error = False
+        try:
+            if popup:
+                result = subprocess.run(['tmux', 'display-popup', '-E', '-w', '95%', '-h', '90%',
+                                         '-d', cwd, shlex.join(argv)], capture_output=True, text=True)
+                # 129 is the SIGHUP sent by close-popup.sh; other popup codes remain informational.
+                text = ('Popup cerrado al terminar el turno.' if result.returncode == 129 else
+                        'Código de salida del popup: {}'.format(result.returncode))
+                if result.stderr.strip():
+                    text += '\n' + result.stderr.strip()
+            else:
+                result = subprocess.run(argv, cwd=cwd, capture_output=True,
+                                        encoding='utf-8', errors='replace', timeout=timeout, stdin=subprocess.DEVNULL)
+                error = result.returncode != 0
+                if error:
+                    text = 'Código de salida del rol {}: {}\n{}'.format(
+                        arguments['role'], result.returncode, result.stderr[-4000:])
+                else:
+                    text = result.stdout
+                    if len(text) > 20000:
+                        text = 'Salida recortada a los últimos 20000 caracteres.\n' + text[-20000:]
+        except subprocess.TimeoutExpired:
+            text, error = 'El rol {} superó {} s.'.format(arguments['role'], timeout), True
+        except FileNotFoundError:
+            text, error = 'Programa no encontrado: ' + ('tmux' if popup else argv[0]), True
+        except OSError as exc:
+            text, error = str(exc), True
+        stat = git(cwd, 'diff', '--stat', 'HEAD', check=False)
+        if stat.returncode:
+            # Preserve the CLI outcome, including when snapshot=false leaves an unborn HEAD.
+            text += '\nNo se pudo obtener git diff --stat HEAD: ' + stat.stderr.strip()
+        elif stat.stdout.strip():
+            text += '\n' + stat.stdout.strip()
+        elif popup:
+            text += '\nSin cambios respecto a HEAD.'
+        return tool_result(text, error)
     except (OSError, ValueError, TypeError) as exc:
         return tool_result(str(exc), True)
 
@@ -138,13 +214,13 @@ def doctor():
     programs = set()
     for name, role in config.get('roles', {}).items():
         try:
-            provider = config['providers'].get(role.get('provider'))
-            if provider is None:
-                raise ValueError('proveedor inexistente')
-            argv = build_command(provider.get('popup'), role, '')
+            description = role_description(name, role)
+            argv = build_command(role_template(config, role), role, '', name)
             programs.add(argv[0])
+            report(True, 'Rol ' + description)
         except (ValueError, TypeError) as exc:
-            report(False, 'Rol {}: {}'.format(name, exc))
+            report(False, 'Rol {}: proveedor={}, modelo={}, popup={}: {}'.format(
+                name, role.get('provider', '?'), role.get('model', '?'), role.get('popup', False), exc))
     for program in sorted(programs):
         report(shutil.which(program) is not None, program + ' en PATH')
     return tool_result('\n'.join(lines))
@@ -166,7 +242,7 @@ def dispatch(request):
                   'capabilities': {'tools': {}},
                   'serverInfo': {'name': 'codex-flow', 'version': '0.1.0'}}
     elif method == 'tools/list':
-        result = {'tools': TOOLS}
+        result = {'tools': list_tools()}
     elif method == 'ping':
         result = {}
     elif method == 'tools/call':

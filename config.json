@@ -2,18 +2,130 @@
   "providers": {
     "codex": {
       "type": "cli",
-      "popup": ["codex", "-m", "{model}", "-c", "model_reasoning_effort=\"{effort}\"", "-s", "read-only", "-a", "on-request", "-c", "notify=[\"{close_popup}\"]", "{prompt}"]
+      "popup": [
+        "codex",
+        "-m",
+        "{model}",
+        "-c",
+        "model_reasoning_effort=\"{effort}\"",
+        "{args}",
+        "{prompt}"
+      ],
+      "background": [
+        "codex",
+        "exec",
+        "-m",
+        "{model}",
+        "-c",
+        "model_reasoning_effort=\"{effort}\"",
+        "{args}",
+        "{prompt}"
+      ]
     },
     "claude": {
       "type": "cli",
-      "popup": ["claude", "--model", "{model}", "--effort", "{effort}", "{prompt}"]
+      "popup": [
+        "claude",
+        "--model",
+        "{model}",
+        "--effort",
+        "{effort}",
+        "{args}",
+        "--",
+        "{prompt}"
+      ],
+      "background": [
+        "claude",
+        "-p",
+        "--model",
+        "{model}",
+        "--effort",
+        "{effort}",
+        "{args}",
+        "--",
+        "{prompt}"
+      ]
     },
     "agy": {
       "type": "cli",
-      "popup": ["agy", "--model", "{model}", "--effort", "{effort}", "-i", "{prompt}"]
+      "popup": [
+        "agy",
+        "--model",
+        "{model}",
+        "--effort",
+        "{effort}",
+        "{args}",
+        "-i",
+        "{prompt}"
+      ],
+      "background": [
+        "agy",
+        "--model",
+        "{model}",
+        "--effort",
+        "{effort}",
+        "{args}",
+        "-p",
+        "{prompt}"
+      ]
     }
   },
   "roles": {
-    "implementer": {"provider": "codex", "model": "gpt-6-astra", "effort": "medium", "popup": true}
+    "planner": {
+      "provider": "claude",
+      "model": "claude-opus-5-5",
+      "effort": "high",
+      "popup": false,
+      "snapshot": false,
+      "args": [
+        "--allowed-tools",
+        "Read,Grep,Glob,Bash(git diff),Bash(rtk git diff),Bash(git diff HEAD),Bash(rtk git diff HEAD),Bash(git diff --stat),Bash(rtk git diff --stat),Bash(git diff --stat HEAD),Bash(rtk git diff --stat HEAD),Bash(git status),Bash(rtk git status),Bash(git log --oneline -20),Bash(rtk git log --oneline -20)",
+        "--append-system-prompt",
+        "Ya estás en la raíz del repositorio. Ejecuta git exactamente con los comandos permitidos, sin cd ni -C."
+      ]
+    },
+    "implementer": {
+      "provider": "codex",
+      "model": "gpt-6-astra",
+      "effort": "medium",
+      "popup": true,
+      "snapshot": true,
+      "args": [
+        "-s",
+        "read-only",
+        "-a",
+        "on-request",
+        "-c",
+        "notify=[\"{close_popup}\"]"
+      ]
+    },
+    "reviewer": {
+      "provider": "claude",
+      "model": "claude-opus-5-5",
+      "effort": "medium",
+      "popup": false,
+      "snapshot": false,
+      "args": [
+        "--allowed-tools",
+        "Read,Grep,Glob,Bash(git diff),Bash(rtk git diff),Bash(git diff HEAD),Bash(rtk git diff HEAD),Bash(git diff --stat),Bash(rtk git diff --stat),Bash(git diff --stat HEAD),Bash(rtk git diff --stat HEAD),Bash(git status),Bash(rtk git status),Bash(git log --oneline -20),Bash(rtk git log --oneline -20)",
+        "--append-system-prompt",
+        "Ya estás en la raíz del repositorio. Ejecuta git exactamente con los comandos permitidos, sin cd ni -C."
+      ]
+    },
+    "fixer": {
+      "provider": "claude",
+      "model": "claude-sonnet-5-5",
+      "effort": "high",
+      "popup": false,
+      "snapshot": true,
+      "args": [
+        "--permission-mode",
+        "acceptEdits",
+        "--allowed-tools",
+        "Read,Grep,Glob,Edit,Write,Bash(git diff),Bash(rtk git diff),Bash(git diff HEAD),Bash(rtk git diff HEAD)",
+        "--append-system-prompt",
+        "Ya estás en la raíz del repositorio. Ejecuta git exactamente con los comandos permitidos, sin cd ni -C."
+      ]
+    }
   }
 }
