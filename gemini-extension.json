@@ -1,0 +1,8 @@
+{
+  "name": "codex-flow",
+  "version": "0.1.0",
+  "description": "Servidor MCP para lanzar roles con el proveedor que elijas, en popup de tmux o en segundo plano",
+  "mcpServers": {
+    "codex-flow": { "command": "python3", "args": ["${extensionPath}/server.py"] }
+  }
+}

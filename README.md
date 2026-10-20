@@ -4,14 +4,34 @@ Servidor MCP por stdio para ejecutar roles de CLI en un popup de tmux o en segun
 
 ## Instalación
 
-Requiere Python 3.9+, Git y los programas que uses (`codex`, `claude`, `agy`) en PATH. Para los roles con popup también requiere tmux. Configura previamente la autenticación de cada CLI y la identidad de Git para poder crear commits.
+**Requisitos:** Python 3.9+, tmux ≥ 3.3 (solo para los roles con popup), Git y los CLI que usen los roles (`codex`, `claude`, `agy`) en PATH. Configura previamente la autenticación de cada CLI y la identidad de Git para poder crear commits.
+
+**Repo privado:** cada máquina necesita acceso a GitHub (`gh auth login` o una clave SSH en la cuenta).
+
+**Claude Code:**
+
+```sh
+/plugin marketplace add ICG-dev/codex-flow
+/plugin install codex-flow@codex-flow
+```
+
+**agy:**
+
+```sh
+git clone git@github.com:ICG-dev/codex-flow.git ~/.codex-flow
+agy plugin install ~/.codex-flow
+```
+
+**Manual (sin plugin):**
 
 ```sh
 claude mcp add -s user codex-flow -- python3 /ruta/a/codex-flow/server.py
 agy mcp add codex-flow python3 /ruta/a/codex-flow/server.py
 ```
 
-Si la ruta contiene espacios, enciérrala entre comillas. Para usar popups, inicia Claude o agy dentro de tmux para que el servidor herede `TMUX`. Los roles en segundo plano no requieren tmux. Ejecuta `doctor` para comprobar el entorno.
+No uses el método manual y el plugin a la vez: el servidor quedaría duplicado. Si la ruta contiene espacios, enciérrala entre comillas.
+
+Para usar popups, inicia Claude o agy dentro de tmux para que el servidor herede `TMUX`. Los roles en segundo plano no requieren tmux. Ejecuta `doctor` para comprobar el entorno.
 
 ## Herramientas
 

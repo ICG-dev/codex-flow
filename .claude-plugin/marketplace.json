@@ -1,0 +1,6 @@
+{
+  "name": "codex-flow",
+  "owner": { "name": "ICG-dev" },
+  "plugins": [ { "name": "codex-flow", "source": "./" } ],
+  "description": "Roles configurables (popup tmux o segundo plano) para Claude Code y agy"
+}
