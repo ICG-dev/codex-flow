@@ -1,5 +1,7 @@
 # codex-flow
 
+![Python 3.9+](https://img.shields.io/badge/Python-3.9%2B-3776AB?logo=python&logoColor=white) ![tmux 3.3+](https://img.shields.io/badge/tmux-3.3%2B-1BB91F?logo=tmux&logoColor=white) ![MCP stdio](https://img.shields.io/badge/MCP-stdio-555555) ![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-D97757?logo=claude&logoColor=white) ![Antigravity CLI](https://img.shields.io/badge/agy-extensi%C3%B3n-4285F4) ![Codex CLI](https://img.shields.io/badge/Codex%20CLI-rol-412991) ![Sin dependencias](https://img.shields.io/badge/dependencias-0-brightgreen) ![Licencia MIT](https://img.shields.io/badge/licencia-MIT-blue)
+
 Servidor MCP por stdio para ejecutar roles de CLI en un popup de tmux o en segundo plano. Python 3.9+ y biblioteca estándar, sin dependencias Python adicionales.
 
 ## Instalación
